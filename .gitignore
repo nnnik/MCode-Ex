@@ -48,6 +48,7 @@ Temporary Items
 
 # Tests for testdriven development
 tdd*.ahk
+test/
 
 # for AHKStudio
 backup/
