@@ -1,0 +1,186 @@
+﻿class CompileResult {
+	__New() {
+		this.segments		:= []
+		this.references	:= {}
+	}
+	
+	__Delete() {
+		for each, segment in this.segments {
+			segment._delete()
+		}
+		for each, reference in this.references {
+			reference._delete()
+		}
+	}
+	
+	addSegment(type, data:="", containedReferences := "", relocations := "") {
+		segment := new this.Segment(this, type, data, containedReferences, relocations)
+		this.segments.push(segment)
+		return segment
+	}
+	
+	addReference(name) {
+		if this.references.hasKey(name)
+			throw exception("duplicate reference error: " . name, -1)
+		reference := new this.Reference(name)
+		this.references[name] := reference
+		return reference
+	}
+	
+	setReferencePosition(reference, segment, position) {
+		if !isObject(reference){
+			if !this.references.hasKey(reference)
+				throw excepion("invalid reference", -1)
+			else
+				reference := this.references[reference]
+		}
+		reference.setData(segment, position)
+		segment.addContainedReference(reference, position)
+		
+	}
+	
+	addRelocation(reference, segment, position) {
+		if !isObject(reference){
+			if !this.references.hasKey(reference)
+				throw excepion("invalid reference", -1)
+			else
+				reference := this.references[reference]
+		}
+		reference.addMention(segment, position)
+		segment.addRelocation(reference, position)
+	}
+	
+	class Segment {
+		types := {_TEXT:1, CONST:1, _DATA:1}
+		
+		__New(parent, type, data := "", containedReferences := "", relocations := "") {
+			if (!type || !this.types[type]) {
+				throw exception("unsupported segment type : """ . type ."""")
+			}
+			if (!data) {
+				data := new parent.Binary()
+			}
+			if (!containedReferences ) {
+				containedReferences  := {}
+			}
+			if (!relocations) {
+				relocations := []
+			}
+			this.data					:= data
+			this.containedReferences 	:= containedReferencies 
+			this.relocations			:= relocations
+		}
+		
+		getData() {
+			return this.data
+		}
+		
+		getContainedReferences() {
+			return this.containedReferences
+		}
+		
+		getRelocations() {
+			return this.relocations
+		}
+		
+		addContainedReference(reference, position) {
+			this.containedReferences[reference.getName()] := reference
+		}
+		
+		addRelocation(reference, position) {
+			this.relocations.push({reference:reference, position:position})
+		}
+		
+		_delete() {
+			this.relocations := ""
+			this.containedReferences := ""
+		}
+	}
+	
+	class Binary {
+		__New(endianness := "LE") {
+			this.endianness	:= endianness
+			this.size 		:= 0
+			this.hexString		:= ""
+		}
+		
+		getSize() {
+			return this.size
+		}
+		
+		getHexString() {
+			return this.hexString
+		}
+		
+		getEndianness() {
+			return this.endiannes
+		}
+		
+		appendHexString(hex, endianness := "LE") {
+			hex := regexReplace(hex, "\s")
+			if (!RegexMatch(hex, "^([a-fA-F0-9]{2})+$"))
+				throw exception("invalid hex")
+			if (endianness != this.endianness) {
+				hex := this.invertHex(hex)
+			}
+			this.hexString	.= hex
+			this.size		+= round(strLen(hex)/2)
+		}
+		
+		appendInteger(integer, byteSize, endianness := "BE") {
+			if (log(integer)/log(2) > byteSize) {
+				throw exception("provided integer is greater than the maximum number that can be encoded with")
+			}
+			this.appendHexString(Format( "{:0" . (size*2) . "x}", integer ), endianness)
+		}
+		
+		invertHex(byref hex) {
+			outHex := ""
+			len := strLen(hex)/2
+			Loop % len {
+				outHex .= subStr(hex, (len-A_Index)*2+1, 2)
+			}
+			return outHex
+		}
+		
+		appendBinaryObject(bin) {
+			if (bin.__class != this.__class)
+				throw exception("incompatible binary formats", -1)
+			if (this.getEndianness() != bin.getEndianness()) {
+				throw exception("incompatible endianness", -1)
+			}
+			this.appendHexString(bin.getHexString())
+		}
+	}
+	
+	class Reference {
+		__New(name) {
+			this.name			:= name
+			this.mentions		:= []
+			this.function		:= false
+		}
+		
+		getName() {
+			return this.name
+		}
+		
+		setData(segment, position) {
+			this.segment  := segment
+			this.position := position
+		}
+		
+		addMention(segment, position) {
+			this.mentions.push({segment:segment, position:position})
+		}
+		
+		setFunction(functionFlag := true) {
+			this.function := functionFlag
+		}
+		
+		_Delete() {
+			this.segment	:= ""
+			this.mentions	:= ""
+		}
+	}
+	
+}

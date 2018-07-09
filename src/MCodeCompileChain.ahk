@@ -1,10 +1,10 @@
-﻿#Include %A_LineFile%/../VS.ahk
-#Include %A_LineFile%/../MCodeExPackage.ahk
+﻿#Include %A_LineFile%/../Compiler/VSCompiler.ahk
+#Include %A_LineFile%/../Packages/MCodeExPackage.ahk
 
 
-; a class that makes the parts interact with one another with regards to specific settings
+;a class that makes the parts interact with one another with regards to specific settings
 ;in order to create the MCode
-class MCodeWorkChain {
+class MCodeCompileChain {
 	
 	static compilers := {vs:VSCompiler} ;a list of all valid compilers
 	static packages := {MCodeEx:MCodeExPackage}
@@ -54,7 +54,6 @@ class MCodeWorkChain {
 	}
 	
 	compile(inputFile, outputFile) {
-		Msgbox
 		this.compiler.setInputFile(inputFile)
 		resultingString := this.package.buildPackage(this.compiler)
 		fileOpen(outputFile, "w").write(resultingString)
