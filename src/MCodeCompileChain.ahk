@@ -1,5 +1,6 @@
 ﻿#Include %A_LineFile%/../Compiler/VSCompiler.ahk
 #Include %A_LineFile%/../Packages/MCodeExPackage.ahk
+#Include %A_LineFile%/../CompileResult.ahk
 
 
 ;a class that makes the parts interact with one another with regards to specific settings
