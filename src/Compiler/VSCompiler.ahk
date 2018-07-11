@@ -2,7 +2,6 @@
 	
 	static compileBatString := "CALL ""{1:s}""`r`ncl {2:s} /Ox /FAcu /TC /c /arch:SSE2"
 	
-	
 	setInputFile(file) {
 		this.inputFile := file
 	}
