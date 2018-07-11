@@ -42,7 +42,7 @@
 	}
 	
 	appendInteger(integer, byteSize, endianness := "BE") {
-		if (log(integer)/log(2) > byteSize) {
+		if (log(integer)/log(2) > byteSize*8) { ;because the left size is the size in bits
 			throw exception("provided integer is greater than the maximum number that can be encoded with", -1)
 		}
 		this.appendHexString(Format( "{:0" . (byteSize*2) . "x}", integer ), endianness)
