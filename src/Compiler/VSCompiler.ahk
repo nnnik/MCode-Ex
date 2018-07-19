@@ -1,6 +1,6 @@
 ﻿class VSCompiler {
 	
-	static compileBatString := "CALL ""{1:s}""`r`ncl {2:s} /Ox /FAcu /TC /c /arch:SSE2"
+	static compileBatString := "CALL {1:s}`r`ncl {2:s} /O1x /FAcu /TC /c /arch:SSE2"
 	
 	setInputFile(file) {
 		this.inputFile := file
@@ -11,12 +11,15 @@
 	}
 	
 	compile(bitness := "32") {
-		compileString := Format(this.compileBatString, this.getCompilerLocation(), this.inputFile)
+		compileString := Format(this.compileBatString, this.getVSBat()[bitness], this.inputFile)
 		exec := this.runWaitMany(compileString)
+		if inStr(exec, "Error") {
+			Msgbox % exec
+		}
 		compiledText := fileOpen(this.getOutputFile(), "r").read()
 		compileResult := this.initializeCompileResult()
 		parseClass := this.AssemblyListingParser
-		parser := new parseClass(compiledText, compileResult)
+		parser := new parseClass(compiledText, compileResult, bitness)
 		parser.parse()
 		return compileResult
 	}
@@ -25,21 +28,24 @@
 		return new CompileResult()
 	}
 	
-	
-	getCompilerLocation() {
-		return "C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\VC\Auxiliary\Build\vcvarsx86_amd64.bat"
+	getVSBat() {
+		baseVisualStudioFolder := "C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise"
+		batPath := "\VC\Auxiliary\Build\vcvarsall.bat"
+		return 	{ 32:"""" . baseVisualStudioFolder . batPath . """ x86"
+		, 64:"""" . baseVisualStudioFolder . batPath . """ x86_amd64"}
 	}
 	
 	class AssemblyListingParser {
 		
 		static mainParseData := {("(PUBLIC|EXTRN)\s+([a-zA-Z0-9@_]+)"):"addReference"
-		, ("(CONST|_DATA)\s+SEGMENT"):"addDataSegment"
+		, ("(CONST|_DATA|_BSS)\s+SEGMENT"):"addDataSegment"
 		, ("_TEXT\s+SEGMENT"):"addFunctionSegment"
 		, ("END\R"):"exitParse"}
 		
-		__New(text, compileResult) {
+		__New(text, compileResult, bitness := 32) {
 			this.compileResult := compileResult
 			this.text := text
+			this.ptrSize := {32:4, 64:8}[bitness]
 		}
 		
 		parse() {
@@ -79,9 +85,11 @@
 			for name, reference in this.compileResult.getReferences()
 				publicReferences .= "\Q" name . "\E|"
 			
-			dataSegmentParseData := {("(CONST|_DATA)\s+ENDS"):"exitParse"
+			dataSegmentParseData := {("(CONST|_DATA|_BSS)\s+ENDS"):"exitParse"
 			,( "(" . RTrim(publicReferences, "|") . ")[^a-zA-Z0-9@_]"):"setDataPointer"
 			,("\s*(DB|DD|DQ)\s+([^\n\r]+)"):"addDataToDataSegment"}
+			
+			this.nullSegment := (dataSegmentRegex.1 = "_BSS")
 			
 			this.currentSegment := this.compileResult.addSegment(dataSegmentRegex.1)
 			test := this.matchParseData(text, dataSegmentParseData)
@@ -96,9 +104,14 @@
 		
 		addDataToDataSegment(byref text, regex) {
 			dataEntries := strSplit(regex.2, ", ")
+			typeSize := {DB:2, DD:8, DQ:16}[regex.1]
+			if (this.nullSegment) {
+				this.currentSegment.getData().appendHexString(Format("{:0" . (dataEntries.length()*typeSize) . "}", ""))
+				return
+			}
 			for each, entry in dataEntries {
 				if (RegexMatch(entry, "0([a-fA-F0-9]+)", data)) {
-					this.currentSegment.getData().appendHexString(Format("{:0" . {DB:2, DD:8, DQ:16}[regex.1] . "s}", data1 ), "BE")
+					this.currentSegment.getData().appendHexString(Format("{:0" . (typeSize) . "s}", data1 ), "BE")
 				}
 				else if (RegExMatch(entry, "'([^']+)'", data)) {
 					for each, character in strSplit(data1) {
@@ -142,13 +155,15 @@
 			
 			data := RegExReplace(regex.1, "\s|\R") ;remove the spaces from the hex string
 			this.currentSegment.getData().appendHexString(data)
-			
 			if (RegexMatch(regex.2, relocRegex, reference)) {
-				while (!mod( pos := inStr(data, "00000000", true, A_Index), 2 )) ;8 0s should be enough to indicate a pointer on both 32 and 64 bit assembly
-					if (A_Index > strLen(data))
+				while (!mod( pos := inStr(data, "00000000", true, A_Index), 2 ))
+					if (A_Index > strLen(data)) {
 						break
-				if (mod(pos, 2))
-					this.compileResult.addRelocation(reference1, this.currentSegment, this.currentSegment.getData().getLength() - floor((strLen(data)-pos)/2) - 1)
+					}
+				if (mod(pos, 2)) {
+					position := this.currentSegment.getData().getLength() - floor((strLen(data)-pos)/2) - 1
+					this.compileResult.addRelocation(reference1, this.currentSegment, position, size)
+				}
 			}
 		}
 	}
@@ -160,7 +175,7 @@
 		; Send the commands to execute, separated by newline
 		exec.StdIn.WriteLine(commands "`nexit")  ; Always exit at the end!
 		; Read and return the output of all commands
-		return exec.stdout.ReadAll()
+		return exec.stderr.ReadAll() . "`n" . exec.stdout.ReadAll()
 	}
 	
 }

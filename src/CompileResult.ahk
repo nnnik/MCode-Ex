@@ -70,7 +70,7 @@
 	}
 	
 	class Segment {
-		static types := {_TEXT:1, CONST:1, _DATA:1}
+		static types := {_TEXT:1, CONST:1, _DATA:1, _BSS:1}
 		
 		__New(type, data := "", containedReferences := "", relocations := "") {
 			if (!type || !this.types[type]) {
