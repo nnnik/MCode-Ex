@@ -1,6 +1,43 @@
 ﻿class VSCompiler {
 	
-	static compileBatString := "CALL {1:s}`r`ncl {2:s} /O1x /FAcu /TC /c /arch:SSE2"
+	static compileBatString := "CALL {1:s}`r`ncl {2:s} {3:s} /FAcu /TC /c /arch:SSE2"
+	static optimizations := {full:"/Ox", size:"/O1", speed:"/O2", none:"/Od", default:""}
+	bitness := 32
+	optimization := "default"
+	
+	compile() {
+		exec := this.runWaitMany(this.getCompileString())
+		if inStr(exec, "Error") {
+			throw exception("Compile Error:`n" . exec, -1)
+		}
+		compiledText := fileOpen(this.getOutputFile(), "r").read()
+		compileResult := this.initializeCompileResult()
+		parseClass := this.AssemblyListingParser
+		parser := new parseClass(compiledText, compileResult, this.bitness)
+		parser.parse()
+		FileDelete, % this.getOutputFile()
+		FileDelete, % this.getObjFile()
+		return compileResult
+	}
+	
+	initializeCompileResult() {
+		return new CompileResult()
+	}
+	
+	getCompileString() {
+		return Format(this.compileBatString, this.getVSBat(), this.inputFile, this.getOParameter())
+	}
+	
+	getVSBat() {
+		baseVisualStudioFolder := "C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise"
+		batPath := "\VC\Auxiliary\Build\vcvarsall.bat"
+		return 	{ 32:"""" . baseVisualStudioFolder . batPath . """ x86"
+		, 64:"""" . baseVisualStudioFolder . batPath . """ x86_amd64"}[this.bitness]
+	}
+	
+	getOptimization() {
+		return this.optimization
+	}
 	
 	setInputFile(file) {
 		this.inputFile := file
@@ -10,30 +47,33 @@
 		return RegExReplace(this.inputFile, "\.[^.]+$") . ".cod"
 	}
 	
-	compile(bitness := "32") {
-		compileString := Format(this.compileBatString, this.getVSBat()[bitness], this.inputFile)
-		exec := this.runWaitMany(compileString)
-		if inStr(exec, "Error") {
-			Msgbox % exec
+	getObjFile() {
+		return RegExReplace(this.inputFile, "\.[^.]+$") . ".obj"
+	}
+	
+	setOptimization(optimization := "default") {
+		if (!this.optimizations.hasKey(optimization)) {
+			throw exception("invalid optimization: " . optimization, -1)
 		}
-		compiledText := fileOpen(this.getOutputFile(), "r").read()
-		compileResult := this.initializeCompileResult()
-		parseClass := this.AssemblyListingParser
-		parser := new parseClass(compiledText, compileResult, bitness)
-		parser.parse()
-		return compileResult
+		return this.optimization := optimization
 	}
 	
-	initializeCompileResult() {
-		return new CompileResult()
+	getOParameter() {
+		return this.optimizations[this.optimization]
 	}
 	
-	getVSBat() {
-		baseVisualStudioFolder := "C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise"
-		batPath := "\VC\Auxiliary\Build\vcvarsall.bat"
-		return 	{ 32:"""" . baseVisualStudioFolder . batPath . """ x86"
-		, 64:"""" . baseVisualStudioFolder . batPath . """ x86_amd64"}
+	getBitness() {
+		return this.bitness
 	}
+	
+	;target bitness (32 or 64 bit, 32 is default)
+	setBitness( bitness := 32 ) {
+		if !(bitness = 32 || bitness = 64) {
+			throw exception("invalid bit value", -1)
+		}
+		return this.bitness := bitness
+	}
+	
 	
 	class AssemblyListingParser {
 		
@@ -154,17 +194,18 @@
 			relocRegex := RTrim(relocRegex, "|") . ")([^a-zA-Z0-9@_$]|$)"
 			
 			data := RegExReplace(regex.1, "\s|\R") ;remove the spaces from the hex string
-			this.currentSegment.getData().appendHexString(data)
 			if (RegexMatch(regex.2, relocRegex, reference)) {
 				while (!mod( pos := inStr(data, "00000000", true, A_Index), 2 ))
 					if (A_Index > strLen(data)) {
 						break
 					}
 				if (mod(pos, 2)) {
-					position := this.currentSegment.getData().getLength() - floor((strLen(data)-pos)/2) - 1
+					position := this.currentSegment.getData().getLength() + floor(pos/2)
 					this.compileResult.addRelocation(reference1, this.currentSegment, position, size)
+					data := subStr(data, 1, pos-1) . Format("{:0" . (this.ptrSize*2) . "x}", "") . subStr(data, pos+8) 
 				}
 			}
+			this.currentSegment.getData().appendHexString(data)
 		}
 	}
 	
